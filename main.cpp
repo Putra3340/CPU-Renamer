@@ -74,7 +74,26 @@ std::string GetRegistryValue(const wchar_t* keyPath, const wchar_t* valueName) {
     }
 }
 
-
+void menu() {
+    int option = 0;
+    std::wcout << "-------------------" << std::endl << "1. Change Name" << std::endl << "2. Restore Default" << std::endl << std::endl << "->";
+    std::cin >> option;
+    std::cin.ignore();
+    std::cout << std::endl;
+    if (option == 1)
+    {
+        std::wcout << L"Enter the new processor name: ";
+        wchar_t processorName[256]; // Adjust the size based on your needs
+        std::wcin.getline(processorName, sizeof(processorName) / sizeof(processorName[0]));
+        UpdateRegistryValue(processorName);
+    }
+    else if (option == 2)
+    {
+        std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+        std::wstring proc = converter.from_bytes(Restore());
+        UpdateRegistryValue(proc.c_str());
+    }
+}
 
 int main() {
     // Specify the registry key path and value name
@@ -90,27 +109,11 @@ int main() {
 
 
     if (fileExists(filename)) {
-        int option = 0;
-        std::wcout << "-------------------" << std::endl << "1. Change Name" << std::endl << "2. Restore Default" << std::endl << std::endl << "->";
-        std::cin >> option;
-        std::cin.ignore();
-        std::cout << std::endl;
-        if (option == 1)
-        {
-            std::wcout << L"Enter the new processor name: ";
-            wchar_t processorName[256]; // Adjust the size based on your needs
-            std::wcin.getline(processorName, sizeof(processorName) / sizeof(processorName[0]));
-            UpdateRegistryValue(processorName);
-        }
-        else if (option == 2)
-        {
-            std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-            std::wstring proc = converter.from_bytes(Restore());
-            UpdateRegistryValue(proc.c_str());
-        }
+        menu();
     }
     else {
         Backup(processorName);
+        menu();
     }
 
     return 0;

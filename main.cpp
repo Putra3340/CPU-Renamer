@@ -1,91 +1,116 @@
-#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
-#include <fstream>
-#include <string>
 #include <Windows.h>
-#include <cstdlib>
+#include <locale>
+#include <codecvt>
+#include <string>
+#include <fstream>
+void UpdateRegistryValue(const wchar_t* processorName) {
+    HKEY hKey;
+    LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_SET_VALUE, &hKey);
 
-void Writer(std::string backup) {
+    if (result == ERROR_SUCCESS) {
+        result = RegSetValueExW(hKey, L"ProcessorNameString", 0, REG_SZ, reinterpret_cast<const BYTE*>(processorName), (wcslen(processorName) + 1) * sizeof(wchar_t));
+
+        if (result == ERROR_SUCCESS) {
+            std::wcout << L"Updated successfully." << std::endl;
+        }
+        else {
+            std::wcerr << L"Error updating registry key: " << result << std::endl;
+        }
+
+        RegCloseKey(hKey);
+    }
+    else {
+        std::wcerr << L"Error opening registry key: " << result << std::endl;
+    }
+}
+
+bool fileExists(const std::string& filename) {
+    DWORD attributes = GetFileAttributesA(filename.c_str());
+    return (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+std::string WStringToString(const std::wstring& wstr) {
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+    return converter.to_bytes(wstr);
+}
+
+std::string Restore() {
+    std::ifstream file("backup.dat");
+    std::string proc;
+    std::getline(file, proc);
+    file.close();
+    return proc;
+}
+
+void Backup(std::string backup) {
     std::ofstream out("backup.dat");
     out << backup;
     out.close();
 }
 
-int main() {
+std::string GetRegistryValue(const wchar_t* keyPath, const wchar_t* valueName) {
     HKEY hKey;
-    DWORD dwType = REG_SZ;
-    wchar_t szProcessorName[MAX_PATH];
-    DWORD dwSize = sizeof(szProcessorName);
+    LONG result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, keyPath, 0, KEY_READ, &hKey);
 
-    // Open the registry key
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-        L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
-        0,
-        KEY_READ | KEY_SET_VALUE,  // Added KEY_SET_VALUE for write access
-        &hKey) == ERROR_SUCCESS) {
+    if (result == ERROR_SUCCESS) {
+        wchar_t buffer[MAX_PATH];
+        DWORD bufferSize = sizeof(buffer);
 
-        // Read the ProcessorNameString value
-        if (RegQueryValueExW(hKey,
-            L"ProcessorNameString",
-            NULL,
-            &dwType,
-            (LPBYTE)szProcessorName,
-            &dwSize) == ERROR_SUCCESS) {
+        result = RegQueryValueEx(hKey, valueName, 0, NULL, (LPBYTE)buffer, &bufferSize);
 
-            //Check The Backup Dat
-            const char* file = "backup.dat";
-            struct stat sb;
-            if (stat(file, &sb) == 0 && !(sb.st_mode & S_IFDIR)) {
-                //nah i leave it blank
-            }
-            else{
-                /*if didnt have backup
-                and convert wchar_t to string to make backup
-                */
-                std::cout << std::endl;
-            int bufferSize = wcstombs(nullptr, szProcessorName, 0);
-            if (bufferSize == -1) {
-                std::cerr << "Conversion error" << std::endl;
-                return 1;
-            }
-            char* multibyteStr = new char[bufferSize + 1];
-            if (wcstombs(multibyteStr, szProcessorName, bufferSize + 1) == -1) {
-                std::cerr << "Conversion error" << std::endl;
-                delete[] multibyteStr;
-                return 1;
-            }
-            std::string utf8Str(multibyteStr);
-            delete[] multibyteStr;
-            Writer(utf8Str);
-        }
-
-            std::wcout << L"Current Processor Name: " << szProcessorName << std::endl;
-
-            // Prompt the user for a new ProcessorNameString
-            std::wcin.getline(szProcessorName, sizeof(szProcessorName) / sizeof(wchar_t));
-
-            // Write the updated ProcessorNameString back to the registry
-            if (RegSetValueExW(hKey,
-                L"ProcessorNameString",
-                0,
-                dwType,
-                (LPBYTE)szProcessorName,
-                (wcslen(szProcessorName) + 1) * sizeof(wchar_t)) == ERROR_SUCCESS) {
-                std::wcout << L"Processor Name updated successfully." << std::endl;
-            }
-            else {
-                std::cerr << "Failed to update ProcessorNameString." << std::endl;
-            }
+        if (result == ERROR_SUCCESS) {
+            RegCloseKey(hKey);
+            // Convert the wide string to a standard string
+            return WStringToString(buffer);
         }
         else {
-            std::cerr << "Failed to read ProcessorNameString." << std::endl;
+            RegCloseKey(hKey);
+            throw std::runtime_error("Error reading registry value");
         }
-
-        // Close the registry key
-        RegCloseKey(hKey);
     }
     else {
-        std::cerr << "Failed to open the registry key." << std::endl;
+        throw std::runtime_error("Error opening registry key");
+    }
+}
+
+
+
+int main() {
+    // Specify the registry key path and value name
+    const wchar_t* keyPath = L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
+    const wchar_t* valueName = L"ProcessorNameString";
+    const std::string filename = "backup.dat";
+
+    // Call the function to get the registry value
+    std::string processorName = GetRegistryValue(keyPath, valueName);
+
+    // Display the result
+    std::cout << "Current Processor Name: " << processorName << std::endl;
+
+
+    if (fileExists(filename)) {
+        int option = 0;
+        std::wcout << "-------------------" << std::endl << "1. Change Name" << std::endl << "2. Restore Default" << std::endl << std::endl << "->";
+        std::cin >> option;
+        std::cin.ignore();
+        std::cout << std::endl;
+        if (option == 1)
+        {
+            std::wcout << L"Enter the new processor name: ";
+            wchar_t processorName[256]; // Adjust the size based on your needs
+            std::wcin.getline(processorName, sizeof(processorName) / sizeof(processorName[0]));
+            UpdateRegistryValue(processorName);
+        }
+        else if (option == 2)
+        {
+            std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+            std::wstring proc = converter.from_bytes(Restore());
+            UpdateRegistryValue(proc.c_str());
+        }
+    }
+    else {
+        Backup(processorName);
     }
 
     return 0;
